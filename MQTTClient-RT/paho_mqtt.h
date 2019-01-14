@@ -30,6 +30,8 @@ enum QoS { QOS0, QOS1, QOS2 } ALIGN(4);
 /* all failure return codes must be negative */
 enum returnCode { PAHO_BUFFER_OVERFLOW = -2, PAHO_FAILURE = -1, PAHO_SUCCESS = 0 };
 
+static int mqtt_is_started = 0;
+
 typedef struct MQTTMessage
 {
     enum QoS qos;
@@ -78,6 +80,7 @@ struct MQTTClient
     /* publish interface */
 #if defined(RT_USING_POSIX) && (defined(RT_USING_DFS_NET) || defined(SAL_USING_POSIX))
     int pub_pipe[2];
+    struct rt_pipe_device* pipe_device;
 #else
     int pub_sock;
     int pub_port;

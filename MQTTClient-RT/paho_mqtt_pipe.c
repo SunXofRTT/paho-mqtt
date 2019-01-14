@@ -792,6 +792,44 @@ exit:
     return rc;
 }
 
+static rt_int32_t mqtt_pipe_init(struct rt_pipe_device **pipe,int filds[2])
+{
+    char dname[8];
+    char dev_name[32];
+    static int pipeno = 0;
+
+    if (filds == RT_NULL)
+    {
+        return -1;
+    }
+
+    snprintf(dname, sizeof(dname), "MQTT%d", pipeno++);
+    *pipe = rt_pipe_create(dname, PIPE_BUFSZ);
+
+    if (*pipe == RT_NULL)
+    {
+        rt_kprintf("create mqtt pipe fail\n");
+        return -1;
+    }
+
+    snprintf(dev_name, sizeof(dev_name), "/dev/%s", dname);
+    filds[0] = open(dev_name, O_RDONLY, 0);
+    if (filds[0] < 0)
+    {
+        rt_kprintf("pipe_read_fd open failed\n");
+        return -1;
+    }
+
+    filds[1] = open(dev_name, O_WRONLY, 0);
+    if (filds[1] < 0)
+    {
+        close(filds[1]);
+        rt_kprintf("pipe_write_fd open failed\n");
+        return -1;
+    }
+    return 0;
+}
+
 static void paho_mqtt_thread(void *param)
 {
     MQTTClient *c = (MQTTClient *)param;
@@ -799,12 +837,11 @@ static void paho_mqtt_thread(void *param)
     int rc_t = 0;
 
     /* create publish pipe. */
-    if (pipe(c->pub_pipe) != 0)
+    if (mqtt_pipe_init(&(c->pipe_device),c->pub_pipe) != 0)
     {
         LOG_E("creat pipe err");
         goto _mqtt_exit;
     }
-
 _mqtt_start:
     if (c->connect_callback)
     {
@@ -980,6 +1017,10 @@ _mqtt_restart:
     goto _mqtt_start;
 
 _mqtt_disconnect_exit:
+    mqtt_is_started = 0;
+    close(c->pub_pipe[0]);
+    close(c->pub_pipe[1]);
+    rt_pipe_delete((const char *)c->pipe_device);
     MQTTDisconnect(c);
     net_disconnect(c);
 
@@ -991,40 +1032,22 @@ _mqtt_exit:
 
 int paho_mqtt_start(MQTTClient *client)
 {
-    rt_err_t result;
-    rt_thread_t tid;
     int stack_size = RT_PKG_MQTT_THREAD_STACK_SIZE;
     int priority = RT_THREAD_PRIORITY_MAX / 3;
     char *stack;
 
-    static int is_started = 0;
-    if (is_started)
+    if (mqtt_is_started)
     {
         LOG_W("paho mqtt has already started!");
         return 0;
     }    
 
-    tid = rt_malloc(RT_ALIGN(sizeof(struct rt_thread), 8) + stack_size);
-    if (!tid)
+    rt_thread_t mqtt_thread = rt_thread_create("MQTT", paho_mqtt_thread, client, RT_ALIGN(sizeof(struct rt_thread), 8) + stack_size,priority,2);
+    if(mqtt_thread)
     {
-        LOG_E("no memory for thread: MQTT");
-        return -1;
+        rt_thread_startup(mqtt_thread);
+        mqtt_is_started = 1;
     }
-
-    stack = (char *)tid + RT_ALIGN(sizeof(struct rt_thread), 8);
-    result = rt_thread_init(tid,
-                            "MQTT",
-                            paho_mqtt_thread, client, // fun, parameter
-                            stack, stack_size,        // stack, size
-                            priority, 2               //priority, tick
-                           );
-
-    if (result == RT_EOK)
-    {
-        rt_thread_startup(tid);
-        is_started = 1;
-    }
-
     return 0;
 }
 
