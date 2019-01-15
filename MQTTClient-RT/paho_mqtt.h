@@ -54,7 +54,8 @@ struct MQTTClient
 {
     const char *uri;
     int sock;
-
+    int reconnectPeriod;
+    int connectTimeout;
     MQTTPacket_connectData condata;
 
     unsigned int next_packetid, command_timeout_ms;

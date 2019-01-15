@@ -437,6 +437,7 @@ _continue:
     return bytes;
 }
 
+
 static int decodePacket(MQTTClient *c, int *value, int timeout)
 {
     unsigned char i;
@@ -463,6 +464,55 @@ static int decodePacket(MQTTClient *c, int *value, int timeout)
     while ((i & 128) != 0);
 exit:
     return len;
+}
+
+static int net_read_type(MQTTClient *c, unsigned char *buf)
+{
+    int bytes = 0;
+    int rc;
+
+    fd_set readset;
+    struct timeval interval;
+    interval.tv_sec = c->connectTimeout/1000;
+    interval.tv_usec = (c->connectTimeout%1000)*1000;
+    FD_ZERO(&readset);
+    FD_SET(c->sock, &readset);
+
+    if(select(c->sock + 1, &readset, RT_NULL, RT_NULL, &interval)==0)
+    {
+        return rc;
+    }
+    if (FD_ISSET(c->sock, &readset))
+    {
+        rc = recv(c->sock, &buf[0], (size_t)1, MSG_DONTWAIT);
+    }
+}
+
+static int MQTTPacket_get_CONNACK(MQTTClient *c)
+{
+    int rc = PAHO_FAILURE;
+    MQTTHeader header = {0};
+    int len = 0;
+    int rem_len = 0;
+
+    /* 1. read the header byte.  This has the packet type in it */
+    if (net_read_type(c, c->readbuf) != 1)
+        goto exit;
+
+    len = 1;
+    /* 2. read the remaining length.  This is variable in itself */
+    decodePacket(c, &rem_len, 50);
+    len += MQTTPacket_encode(c->readbuf + 1, rem_len); /* put the original remaining length back into the buffer */
+
+    /* 3. read the rest of the buffer using a callback to supply the rest of the data */
+    if (rem_len > 0 && (net_read(c, c->readbuf + len, rem_len, 300) != rem_len))
+        goto exit;
+
+    header.byte = c->readbuf[0];
+    rc = header.bits.type;
+
+exit:
+    return rc;
 }
 
 static int MQTTPacket_readPacket(MQTTClient *c)
@@ -534,7 +584,7 @@ static int MQTTConnect(MQTTClient *c)
         }
     }
 
-    rc = MQTTPacket_readPacket(c);
+    rc = MQTTPacket_get_CONNACK(c);
     if (rc < 0)
     {
         LOG_E("%s MQTTPacket_readPacket fail", __FUNCTION__);
@@ -1012,7 +1062,7 @@ _mqtt_restart:
     }
 
     net_disconnect(c);
-    rt_thread_delay(RT_TICK_PER_SECOND * 5);
+    rt_thread_delay(c->reconnectPeriod);
     LOG_D("restart!");
     goto _mqtt_start;
 
