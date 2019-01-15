@@ -56,6 +56,7 @@ struct MQTTClient
     int sock;
     int reconnectPeriod;
     int connectTimeout;
+    int toClose;
     MQTTPacket_connectData condata;
 
     unsigned int next_packetid, command_timeout_ms;

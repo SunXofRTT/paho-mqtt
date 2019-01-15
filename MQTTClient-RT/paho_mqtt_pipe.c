@@ -893,6 +893,11 @@ static void paho_mqtt_thread(void *param)
         goto _mqtt_exit;
     }
 _mqtt_start:
+    if(c->toClose)
+    {
+        goto _mqtt_disconnect_exit;
+    }
+
     if (c->connect_callback)
     {
         c->connect_callback(c);
@@ -1071,6 +1076,7 @@ _mqtt_disconnect_exit:
     close(c->pub_pipe[0]);
     close(c->pub_pipe[1]);
     rt_pipe_delete((const char *)c->pipe_device);
+    c->toClose = 0;
     MQTTDisconnect(c);
     net_disconnect(c);
 
@@ -1116,6 +1122,11 @@ MQTT_CMD:
 */
 int MQTT_CMD(MQTTClient *c, const char *cmd)
 {
+    if(strcmp(cmd,"DISCONNECT")==0)
+	{
+        c->toClose = 1;
+	}
+
     char *data = 0;
     int cmd_len, len;
     int rc = PAHO_FAILURE;
