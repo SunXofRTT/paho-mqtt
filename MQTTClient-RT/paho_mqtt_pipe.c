@@ -893,6 +893,8 @@ static void paho_mqtt_thread(void *param)
         goto _mqtt_exit;
     }
 _mqtt_start:
+    mqtt_is_started = 1;
+
     if(c->toClose)
     {
         goto _mqtt_disconnect_exit;
@@ -1034,6 +1036,11 @@ _mqtt_start:
                     goto _mqtt_disconnect_exit;
                 }
 
+                if (strcmp((const char *)c->readbuf, "RECONNECT") == 0)
+                {
+                    LOG_D("RECONNDEC");
+                    goto _mqtt_disconnect;
+                }
                 continue;
             }
 
@@ -1059,6 +1066,7 @@ _mqtt_start:
     } /* while (1) */
 
 _mqtt_disconnect:
+    LOG_D("disconnect");
     MQTTDisconnect(c);
 _mqtt_restart:
     if (c->offline_callback)
@@ -1072,17 +1080,16 @@ _mqtt_restart:
     goto _mqtt_start;
 
 _mqtt_disconnect_exit:
-    mqtt_is_started = 0;
     close(c->pub_pipe[0]);
     close(c->pub_pipe[1]);
     rt_pipe_delete((const char *)c->pipe_device);
-    c->toClose = 0;
     MQTTDisconnect(c);
     net_disconnect(c);
 
 _mqtt_exit:
     LOG_D("thread exit");
-
+    mqtt_is_started = 0;
+    c->toClose = 0;
     return;
 }
 
@@ -1091,7 +1098,6 @@ int paho_mqtt_start(MQTTClient *client)
     int stack_size = RT_PKG_MQTT_THREAD_STACK_SIZE;
     int priority = RT_THREAD_PRIORITY_MAX / 3;
     char *stack;
-
     if (mqtt_is_started)
     {
         LOG_W("paho mqtt has already started!");
@@ -1102,7 +1108,6 @@ int paho_mqtt_start(MQTTClient *client)
     if(mqtt_thread)
     {
         rt_thread_startup(mqtt_thread);
-        mqtt_is_started = 1;
     }
     return 0;
 }

@@ -69,7 +69,7 @@ struct MQTTClient
     void (*connect_callback)(MQTTClient *);
     void (*online_callback)(MQTTClient *);
     void (*offline_callback)(MQTTClient *);
-
+    void* user_data;
     struct MessageHandlers
     {
         char *topicFilter;
